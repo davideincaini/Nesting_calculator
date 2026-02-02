@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="it">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#f2f2f7">
+    <title>Nesting Calc</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icon.svg">
+    <link rel="icon" type="image/svg+xml" href="icon.svg">
+</head>
+
+<body>
+    <div class="app-container">
+        <header>
+            <h1>Nesting Calc</h1>
+        </header>
+
+        <main>
+            <!-- Global Roll Settings -->
+            <section class="card settings-card">
+                <h2>Setting Materiale</h2>
+                <div class="input-group">
+                    <label for="materialName">Nome Materiale</label>
+                    <input type="text" id="materialName" placeholder="es. Carbonio 200g">
+                </div>
+                <div class="input-group">
+                    <label for="rollWidth">Larghezza Rotolo (mm)</label>
+                    <input type="number" id="rollWidth" value="1000" inputmode="numeric">
+                </div>
+            </section>
+
+            <!-- Add Patch Group -->
+            <section class="card input-card">
+                <h2>Nuovo Gruppo Patch</h2>
+                <div class="grid-2">
+                    <div class="input-group">
+                        <label for="patchWidth">Largh. (mm)</label>
+                        <input type="number" id="patchWidth" placeholder="es. 200" inputmode="numeric">
+                    </div>
+                    <div class="input-group">
+                        <label for="patchLength">Lungh. (mm)</label>
+                        <input type="number" id="patchLength" placeholder="es. 300" inputmode="numeric">
+                    </div>
+                </div>
+                <div class="grid-2">
+                    <div class="input-group">
+                        <label for="quantity">Quantità</label>
+                        <input type="number" id="quantity" placeholder="1" inputmode="numeric">
+                    </div>
+                    <div class="input-group">
+                        <label for="orientation">Taglio</label>
+                        <select id="orientation">
+                            <option value="0">0°</option>
+                            <option value="45">45°</option>
+                        </select>
+                    </div>
+                </div>
+                <button id="addBtn" class="btn primary-btn">Aggiungi Gruppo</button>
+            </section>
+
+            <!-- Job List -->
+            <section class="list-section">
+                <h3>Lista di Taglio</h3>
+                <div id="jobList" class="job-list">
+                    <!-- Items will be added here -->
+                    <div class="empty-state">Nessun gruppo aggiunto</div>
+                </div>
+            </section>
+
+            <!-- Results -->
+            <section class="card result-card" id="results">
+                <div class="result-row">
+                    <span>Lunghezza Totale</span>
+                    <span class="value" id="totalLength">0 m</span>
+                </div>
+                <div class="result-row">
+                    <span>Sfrido (Waste)</span>
+                    <span class="value" id="totalWaste">0%</span>
+                </div>
+
+                <div class="canvas-container">
+                    <canvas id="nestingCanvas"></canvas>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <button id="resetBtn" class="btn destr-btn">Reset Job</button>
+        </footer>
+    </div>
+    <script src="app.js"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js');
+        }
+    </script>
+</body>
+
+</html>
