@@ -14,10 +14,24 @@ const patchLengthInput = document.getElementById('patchLength');
 const quantityInput = document.getElementById('quantity');
 const orientationInput = document.getElementById('orientation');
 
+const templateSelect = document.getElementById('templateSelect');
+
 // Event Listeners
 addBtn.addEventListener('click', addJobItem);
 resetBtn.addEventListener('click', resetJob);
 rollWidthInput.addEventListener('change', calculateJob); // Recalculate if roll width changes
+
+templateSelect.addEventListener('change', () => {
+    const val = templateSelect.value;
+    if (val === 'custom') return;
+
+    // Format "LxW" (User: Primo parametro = Lunghezza, Secondo = Larghezza)
+    const [l, w] = val.split('x').map(Number);
+    if (!isNaN(w) && !isNaN(l)) {
+        patchWidthInput.value = w;
+        patchLengthInput.value = l;
+    }
+});
 
 function addJobItem() {
     const width = parseFloat(patchWidthInput.value);
@@ -51,9 +65,6 @@ function addJobItem() {
     jobItems.push(item);
     renderJobList();
     calculateJob();
-
-    // Clear inputs (optional, maybe keep for rapid entry?)
-    // quantityInput.value = '';
 }
 
 function removeJobItem(id) {
@@ -106,6 +117,7 @@ function calculateJob() {
 
     jobItems.forEach(item => {
         const groupRes = calculateGroup(item, rollWidth);
+        item.placements = groupRes.placements; // Store for drawing
         totalLengthMm += groupRes.lengthMm;
         totalPatchAreaMm2 += (item.width * item.length * item.quantity);
     });
@@ -129,71 +141,201 @@ function calculateGroup(item, rollWidth) {
     const { width, length, quantity, orientation } = item;
 
     let consumedLength = 0;
+    const placements = [];
 
-    if (orientation === 0) {
-        // Logic 0 Degree: Fit across width
-        // Assume longer side is length? The user inputs "Width" and "Length". 
-        // We check if "Patch Width" fits in "Roll Width".
-        // If Patch Width > Roll Width, maybe check invalid? Or rotate 90? 
-        // For strict 0 degree, we assume Width aligns with Roll Width.
+    if (orientation === 0 || orientation === 90) {
+        // Parametri effettivi in base alla rotazione
+        // Se 0°: patchWidth lungo rollWidth
+        // Se 90°: patchLength lungo rollWidth
 
-        let patchesPerRow = Math.floor(rollWidth / width);
-        if (patchesPerRow < 1) {
-            // Error case or swap? 
-            // Let's assume strict input: if width > rollWidth, it's 0 patches per row (infinite length).
-            // But let's be smart: check if Length fits in Width? No, that's rotation.
-            patchesPerRow = 0;
+        let effectiveWidth = width;
+        let effectiveLength = length;
+        let rotation = 0;
+
+        if (orientation === 90) {
+            effectiveWidth = length; // Si stende lungo la larghezza rotolo
+            effectiveLength = width; // Si stende lungo la lunghezza rotolo
+            rotation = 90;
         }
+
+        let patchesPerRow = Math.floor(rollWidth / effectiveWidth);
+        if (patchesPerRow < 1) patchesPerRow = 0;
 
         if (patchesPerRow > 0) {
             const rows = Math.ceil(quantity / patchesPerRow);
-            consumedLength = rows * length;
+            consumedLength = rows * effectiveLength;
+
+            // Generate Placements for Drawing
+            let count = 0;
+            let r = 0;
+            let c = 0;
+            while (count < quantity) {
+                // Center coords relative to group start
+                const cx = c * effectiveWidth + effectiveWidth / 2;
+                const cy = r * effectiveLength + effectiveLength / 2;
+
+                placements.push({
+                    x: cx,
+                    y: cy,
+                    angle: rotation,
+                    width: width, // Store ORIGINAL dims for drawing 
+                    length: length
+                });
+                count++;
+                c++;
+                if (c >= patchesPerRow) {
+                    c = 0;
+                    r++;
+                }
+            }
         } else {
-            // Handle error visually? For now just huge length or alert
-            console.error("Patch too wide for roll");
-            return { lengthMm: 0 }; // Or error
+            return { lengthMm: 0, placements: [] };
         }
 
     } else if (orientation === 45) {
-        // Logic 45 Degree: Bounding Box
-        // Radians
-        const rad = 45 * (Math.PI / 180);
-        const cos45 = Math.cos(rad); // ~0.707
-        const sin45 = Math.sin(rad); // ~0.707
+        // Logic 45 Degree: Greedy Best Fit (+/- 45) with SAT Collision
 
-        // Bounding Box Dimensions
-        // New Width = w * cos + l * sin
-        // New Length = w * sin + l * cos
-        // Since sin45 = cos45, it is (w+l)*0.707
+        // --- Helper: SAT Math ---
+        const getAxes = (vertices) => {
+            const axes = [];
+            for (let i = 0; i < vertices.length; i++) {
+                const p1 = vertices[i];
+                const p2 = vertices[(i + 1) % vertices.length];
+                const edge = { x: p2.x - p1.x, y: p2.y - p1.y };
+                const normal = { x: -edge.y, y: edge.x };
+                const len = Math.sqrt(normal.x * normal.x + normal.y * normal.y);
+                axes.push({ x: normal.x / len, y: normal.y / len });
+            }
+            return axes;
+        };
 
-        const bboxW = (width + length) * cos45;
-        const bboxH = (width + length) * sin45; // Same as width for 45 deg rect
+        const project = (vertices, axis) => {
+            let min = Infinity, max = -Infinity;
+            for (const v of vertices) {
+                const proj = v.x * axis.x + v.y * axis.y;
+                if (proj < min) min = proj;
+                if (proj > max) max = proj;
+            }
+            return { min, max };
+        };
 
-        // Optimization: 
-        // If bboxW fits in rollWidth multiple times
-        let patchesPerRow = Math.floor(rollWidth / bboxW);
+        const checkOverlap = (rect1, rect2) => {
+            const axes1 = getAxes(rect1);
+            const axes2 = getAxes(rect2);
+            const axes = [...axes1, ...axes2];
+            for (const axis of axes) {
+                const p1 = project(rect1, axis);
+                const p2 = project(rect2, axis);
+                if (p1.max < p2.min || p2.max < p1.min) return false;
+            }
+            return true;
+        };
 
-        // However, 45 degree patches can nest! (Triangular gaps)
-        // Standard bounding box is worst case (stacking diamonds tip to tip).
-        // Best case: interlocking.
-        // Effective width per additional patch in a row = (width * cos + length * sin)? No.
+        const getVertices = (cx, cy, w, l, ang) => {
+            const rad = ang * (Math.PI / 180);
+            const cos = Math.cos(rad);
+            const sin = Math.sin(rad);
+            const dx = w / 2;
+            const dy = l / 2;
+            const corners = [
+                { x: -dx, y: -dy },
+                { x: dx, y: -dy },
+                { x: dx, y: dy },
+                { x: -dx, y: dy }
+            ];
+            return corners.map(p => ({
+                x: cx + (p.x * cos - p.y * sin),
+                y: cy + (p.x * sin + p.y * cos)
+            }));
+        };
 
-        // For MVP: Use pure Bounding Box stacking (Worst Case / Simple Safe).
-        // This guarantees no overlap.
+        const sq2 = Math.sqrt(2);
+        const wProj = width / sq2;
+        const lProj = length / sq2;
+        const bboxW = wProj + lProj;
+        const bboxH = wProj + lProj;
 
-        if (patchesPerRow < 1) {
-            // Does not fit even once?
-            console.error("Patch too wide even at 45");
-            // Minimal check
+        // Grid (Lattice Candidates)
+        // High Precision: Step size of 5mm for better packing density
+        const step = 5;
+        const minX = bboxW / 2;
+        const maxX = rollWidth - (bboxW / 2);
+
+        let candidates = [];
+        // Scan limit: Estimate roughly based on quantity
+        const estimatedLength = (quantity * bboxH) / Math.floor(rollWidth / bboxW);
+        const maxYLimit = Math.max(estimatedLength * 2, bboxH * 4);
+
+        for (let y = bboxH / 2; y < maxYLimit; y += step) {
+            for (let x = minX; x <= maxX; x += step) {
+                candidates.push({ x, y });
+            }
         }
 
-        if (patchesPerRow >= 1) {
-            const rows = Math.ceil(quantity / patchesPerRow);
-            consumedLength = rows * bboxH;
+        const placedRects = [];
+
+        // Greedy Loop
+        for (let i = 0; i < quantity; i++) {
+            let best = null;
+
+            for (const pos of candidates) {
+                // Try +45
+                const vPlus = getVertices(pos.x, pos.y, width, length, 45);
+                let collisionPlus = false;
+
+                // Bounds check
+                for (const v of vPlus) {
+                    if (v.x < 0 || v.x > rollWidth) { collisionPlus = true; break; }
+                }
+
+                if (!collisionPlus) {
+                    for (const existing of placedRects) {
+                        if (checkOverlap(vPlus, existing)) { collisionPlus = true; break; }
+                    }
+                }
+
+                if (!collisionPlus) {
+                    best = { x: pos.x, y: pos.y, angle: 45, vertices: vPlus };
+                    break;
+                }
+
+                // Try -45
+                const vMinus = getVertices(pos.x, pos.y, width, length, -45);
+                let collisionMinus = false;
+
+                for (const v of vMinus) {
+                    if (v.x < 0 || v.x > rollWidth) { collisionMinus = true; break; }
+                }
+
+                if (!collisionMinus) {
+                    for (const existing of placedRects) {
+                        if (checkOverlap(vMinus, existing)) { collisionMinus = true; break; }
+                    }
+                }
+
+                if (!collisionMinus) {
+                    best = { x: pos.x, y: pos.y, angle: -45, vertices: vMinus };
+                    break;
+                }
+            }
+
+            if (best) {
+                placedRects.push(best.vertices);
+                placements.push({ x: best.x, y: best.y, angle: best.angle, width, length });
+
+                const endY = best.y + bboxH / 2;
+                if (endY > consumedLength) consumedLength = endY;
+            } else {
+                console.error("Could not place patch " + i);
+                // Fallback
+                const safeY = consumedLength + bboxH;
+                consumedLength += bboxH;
+                placements.push({ x: rollWidth / 2, y: safeY, angle: 45, width, length });
+            }
         }
     }
 
-    return { lengthMm: consumedLength };
+    return { lengthMm: consumedLength, placements };
 }
 
 // Global expose for inline HTML events if needed
@@ -222,76 +364,39 @@ function drawNesting(items, rollWidth, totalLengthMm) {
     let currentY = 0; // In mm
 
     items.forEach(item => {
-        const { width, length, quantity, orientation } = item;
+        const { placements } = item;
 
-        ctx.fillStyle = '#007aff'; // Patches color
+        ctx.fillStyle = '#007aff';
         ctx.strokeStyle = '#fff';
         ctx.lineWidth = 1;
 
-        if (orientation === 0) {
-            let patchesPerRow = Math.floor(rollWidth / width);
-            if (patchesPerRow < 1) return;
+        if (placements && placements.length > 0) {
+            // Find Height of this group based on placements for Cursor Update
+            let maxGroupY = 0;
 
-            let count = 0;
-            let xRel = 0;
-            let yRel = 0;
-
-            while (count < quantity) {
-                const xMm = xRel;
-                const yMm = currentY + yRel;
-
-                ctx.fillRect(xMm * scale, yMm * scale, width * scale, length * scale);
-                ctx.strokeRect(xMm * scale, yMm * scale, width * scale, length * scale);
-
-                count++;
-                xRel += width;
-
-                if (xRel + width > rollWidth) {
-                    xRel = 0;
-                    yRel += length;
-                }
-            }
-
-            const rows = Math.ceil(quantity / patchesPerRow);
-            currentY += (rows * length);
-
-        } else if (orientation === 45) {
-            const rad = 45 * (Math.PI / 180);
-            const cos45 = Math.cos(rad);
-            const sin45 = Math.sin(rad);
-            const bboxW = (width + length) * cos45;
-            const bboxH = (width + length) * sin45;
-
-            let patchesPerRow = Math.floor(rollWidth / bboxW);
-            if (patchesPerRow < 1) return;
-
-            let count = 0;
-            let xI = 0;
-            let yI = 0;
-
-            while (count < quantity) {
-                const xPosMm = (xI * bboxW) + (bboxW / 2);
-                const yPosMm = currentY + (yI * bboxH) + (bboxH / 2);
+            placements.forEach(p => {
+                const cx = p.x * scale;
+                const cy = (currentY + p.y) * scale;
 
                 ctx.save();
-                ctx.translate(xPosMm * scale, yPosMm * scale);
-                ctx.rotate(rad);
-                // Draw centered at origin
-                ctx.fillRect((-width / 2) * scale, (-length / 2) * scale, width * scale, length * scale);
-                ctx.strokeRect((-width / 2) * scale, (-length / 2) * scale, width * scale, length * scale);
+                ctx.translate(cx, cy);
+                ctx.rotate(p.angle * (Math.PI / 180));
+                ctx.fillRect((-p.width / 2) * scale, (-p.length / 2) * scale, p.width * scale, p.length * scale);
+                ctx.strokeRect((-p.width / 2) * scale, (-p.length / 2) * scale, p.width * scale, p.length * scale);
                 ctx.restore();
 
-                count++;
-                xI++;
-
-                if (xI >= patchesPerRow) {
-                    xI = 0;
-                    yI++;
+                // Extent calculation for Group Height
+                // p.y is center relative to group top (0)
+                // extent = center + projectedHeight/2
+                let extH = p.length;
+                if (p.angle !== 0) {
+                    extH = (p.width + p.length) / Math.sqrt(2);
                 }
-            }
+                const bottomY = p.y + extH / 2;
+                if (bottomY > maxGroupY) maxGroupY = bottomY;
+            });
 
-            const rows = Math.ceil(quantity / patchesPerRow);
-            currentY += (rows * bboxH);
+            currentY += maxGroupY;
         }
 
         // Separator

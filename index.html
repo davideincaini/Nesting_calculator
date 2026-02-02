@@ -38,6 +38,19 @@
             <!-- Add Patch Group -->
             <section class="card input-card">
                 <h2>Nuovo Gruppo Patch</h2>
+
+                <div class="input-group">
+                    <label>Template</label>
+                    <select id="templateSelect"
+                        style="width: 100%; padding: 12px; margin-bottom: 15px; border: 1px solid #d1d1d6; border-radius: 8px;">
+                        <option value="custom">Custom</option>
+                        <option value="300x250">ASTM D3039 (300x250)</option>
+                        <option value="300x250">ASTM D3518 (300x250)</option>
+                        <option value="250x200">ASTM D6641 (250x200)</option>
+                        <option value="250x200">ASTM D2344 (250x200)</option>
+                    </select>
+                </div>
+
                 <div class="grid-2">
                     <div class="input-group">
                         <label for="patchWidth">Largh. (mm)</label>
@@ -57,6 +70,7 @@
                         <label for="orientation">Taglio</label>
                         <select id="orientation">
                             <option value="0">0°</option>
+                            <option value="90">90°</option>
                             <option value="45">45°</option>
                         </select>
                     </div>
