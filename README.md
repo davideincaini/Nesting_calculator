@@ -4,6 +4,7 @@ A Progressive Web App (PWA) for calculating how much prepreg roll length is need
 
 Built for real shop-floor use on iPhone, from direct experience in composite materials production.
 
+https://davideincaini.github.io/Nesting_calculator/
 ---
 
 ## The Problem
