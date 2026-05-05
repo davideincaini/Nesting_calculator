@@ -1,10 +1,12 @@
 # Prepreg Nesting Calculator
 
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-Open%20App-blue?style=for-the-badge&logo=github)](https://davideincaini.github.io/Nesting_calculator)
+[![PWA](https://img.shields.io/badge/PWA-Installable%20on%20iPhone-brightgreen?style=for-the-badge&logo=pwa)](https://davideincaini.github.io/Nesting_calculator)
+
 A Progressive Web App (PWA) for calculating how much prepreg roll length is needed to cut a given number of patches — with optimized nesting at both 0° and 45° orientations.
 
 Built for real shop-floor use on iPhone, from direct experience in composite materials production.
 
-https://davideincaini.github.io/Nesting_calculator/
 ---
 
 ## The Problem
